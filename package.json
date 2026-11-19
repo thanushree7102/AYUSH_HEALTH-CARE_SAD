@@ -14,8 +14,6 @@
     "test:isolation": "node scripts/isolation-test.js",
     "check": "node scripts/check-syntax.js",
     "seed": "node scripts/seed-demo.js",
-    "models": "node scripts/copy-models.js",
-    "postinstall": "node scripts/copy-models.js",
     "test:reader": "node scripts/reader-test.js"
   },
   "dependencies": {
