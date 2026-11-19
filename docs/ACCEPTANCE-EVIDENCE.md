@@ -1,6 +1,6 @@
 # Acceptance test evidence
 
-Run: 2026-11-16T09:45:19.852Z  ·  94 passed, 0 failed, 94 checks
+Run: 2026-11-19T15:22:58.175Z  ·  94 passed, 0 failed, 94 checks
 
 All checks go through the API gateway only, on temporary databases (nothing in `data/` is touched).
 
