@@ -1,0 +1,93 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [backend, main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  syntax-check:
+    name: Syntax check (works on this branch alone)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check every .js file parses
+        run: |
+          fail=0
+          for f in $(git ls-files '*.js'); do
+            node --check "$f" || { echo "::error file=$f::syntax error"; fail=1; }
+          done
+          exit $fail
+
+      - name: Check relative require() targets exist
+        run: |
+          node -e '
+          const fs=require("fs"),path=require("path"),cp=require("child_process");
+          const files=cp.execSync("git ls-files \"*.js\"").toString().split("\n").filter(Boolean);
+          const missing=[];
+          for(const f of files){
+            const s=fs.readFileSync(f,"utf8");
+            for(const m of s.matchAll(/require\(\s*[\x27"](\.{1,2}\/[^\x27"]+)[\x27"]\s*\)/g)){
+              const t=path.resolve(path.dirname(f),m[1]);
+              if(!["",".js",".json"].some(x=>fs.existsSync(t+x))) missing.push(f+" -> "+m[1]);
+            }
+          }
+          if(missing.length){
+            console.log("Missing files (expected until other members branches are merged into main):");
+            console.log(missing.join("\n"));
+            console.log("::warning::Some required files are missing from this branch");
+          }
+          '
+
+  full-test:
+    name: Full install and test (needs complete project)
+    runs-on: ubuntu-latest
+    needs: syntax-check
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect complete project
+        id: detect
+        run: |
+          if [ -f package.json ] && [ -f libs/common/db.js ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::package.json / libs/common/db.js not found. Skipping full test. Merge with main first."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.ready == 'true'
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.detect.outputs.ready == 'true'
+        run: npm ci || npm install
+
+      - name: Create .env from example
+        if: steps.detect.outputs.ready == 'true'
+        run: '[ -f .env.example ] && cp .env.example .env || true'
+
+      - name: Repo syntax check
+        if: steps.detect.outputs.ready == 'true'
+        run: npm run check --if-present
+
+      - name: Unit tests
+        if: steps.detect.outputs.ready == 'true'
+        run: npm test --if-present
+
+      - name: Start services and check health
+        if: steps.detect.outputs.ready == 'true'
+        run: |
+          npm run dev > services.log 2>&1 &
+          sleep 20
+          npm run health --if-present
+          cat services.log | tail -50
